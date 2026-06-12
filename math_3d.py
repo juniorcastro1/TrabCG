@@ -81,3 +81,10 @@ def divisao_perspectiva(vertice_4d):
     if vertice_4d[3] != 0:
         return vertice_4d[:3] / vertice_4d[3]
     return vertice_4d[:3]
+
+def normalizar(v):
+    """Retorna o vetor unitário (norma igual a 1)"""
+    norma = np.linalg.norm(v)
+    if norma == 0:
+        return v
+    return v / norma
