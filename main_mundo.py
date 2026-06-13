@@ -7,21 +7,21 @@ import rasterizer
 
 # ==============================================================================
 # CONFIGURAÇÃO DOS INPUTS DA CENA (Questão 2, 2.a e 4)
-# Todos os sólidos posicionados sem colisão e contidos no limite regulamentar de 10
+# Cada objeto possui sua cor RGB forte e saturada para cumprir o Item 4 do PDF
 # ==============================================================================
 CENA = [
     # (função_de_campo, posição_x, posição_z, cor_objeto_rgb, nome_label, escala)
-    (modeling.gerar_campo_peao_elaborado, -7.5, 1.5, [0.9, 0.1, 0.1], "Peão", 0.65),
-    (modeling.gerar_campo_dama, -4.5, -1.5, [0.9, 0.5, 0.1], "Dama", 0.65),
-    (modeling.gerar_campo_torre_elaborada, -1.5, 2.0, [0.1, 0.6, 0.5], "Torre", 0.65),
-    (modeling.gerar_campo_bispo, 1.5, -1.0, [0.1, 0.5, 0.8], "Bispo", 0.65),
-    (modeling.gerar_campo_rainha, 4.5, 1.0, [0.6, 0.2, 0.8], "Rainha", 0.55),
-    (modeling.gerar_campo_rei, 7.5, -2.0, [0.9, 0.7, 0.1], "Rei", 0.45),
+    (modeling.gerar_campo_peao_elaborado, -7.5, 1.5, [1.0, 0.0, 0.0], "Peão", 0.65),  # Vermelho Puro
+    (modeling.gerar_campo_dama, -4.5, -1.5, [1.0, 0.4, 0.0], "Dama", 0.65),  # Laranja Forte
+    (modeling.gerar_campo_torre_elaborada, -1.5, 2.0, [0.0, 1.0, 0.5], "Torre", 0.65),  # Verde-Água Vivo
+    (modeling.gerar_campo_bispo, 1.5, -1.0, [0.0, 0.0, 1.0], "Bispo", 0.65),  # Azul Puro
+    (modeling.gerar_campo_rainha, 4.5, 1.0, [0.7, 0.0, 1.0], "Rainha", 0.55),  # Roxo Intenso
+    (modeling.gerar_campo_rei, 7.5, -2.0, [1.0, 0.9, 0.0], "Rei", 0.45),  # Amarelo Vivo
 ]
 
 
 def construir_matriz_mundo(px, pz, escala=1.0, rotacao_y=0.0, py_offset=-1.5):
-    """Matriz homogênea 4x4 do Espaço do Mundo"""
+    """Matriz homogênea 4x4 do Espaço do Mundo (Questão 2)"""
     m_e = math_3d.escala(escala, escala, escala)
     m_r = math_3d.rotacao_y(rotacao_y)
     m_t = math_3d.translacao(px, py_offset, pz)
@@ -29,10 +29,21 @@ def construir_matriz_mundo(px, pz, escala=1.0, rotacao_y=0.0, py_offset=-1.5):
 
 
 # ==============================================================================
-# GERADORES DE MALHA ADICIONAIS NA UNHA (Para emular o ambiente do Blender)
+# RASTERIZADORES ESTRUTURAIS NA UNHA E MAPEAMENTO DE TICKS 2D
 # ==============================================================================
+def calcular_posicao_tela_rotulo(p_mundo, view_matrix, proj_matrix, res):
+    """Converte um ponto 3D do mundo em coordenadas 2D de pixel para os rótulos numéricos"""
+    v_cam = view_matrix @ np.array([p_mundo[0], p_mundo[1], p_mundo[2], 1.0])
+    v_ndc = math_3d.divisao_perspectiva(proj_matrix @ v_cam)
+    if abs(v_ndc[0]) > 1.0 or abs(v_ndc[1]) > 1.0:
+        return None
+    x_tela = (v_ndc[0] + 1.0) * 0.5 * res
+    y_tela = (1.0 - v_ndc[1]) * 0.5 * res
+    return (x_tela, y_tela)
+
+
 def gerar_linhas_camera_blender(eye, at, tamanho=3.0):
-    """Gera os segmentos de reta 3D que desenham o corpo físico da câmera"""
+    """Gera os segmentos de reta 3D que desenham o corpo físico da câmera (Pirâmide)"""
     n = math_3d.normalizar(eye - at)
     u = math_3d.normalizar(np.cross([0.0, 1.0, 0.0], n))
     v = np.cross(n, u)
@@ -53,14 +64,14 @@ def gerar_linhas_camera_blender(eye, at, tamanho=3.0):
 
 
 def desenhar_reta_3d_no_zbuffer(p1_mundo, p2_mundo, cor, imagem, z_buffer, view_matrix, proj_matrix, res):
-    """Projeta e rasteriza uma linha 3D na unha usando o algoritmo de Bresenham"""
+    """Projeta e rasteriza uma linha 3D no Z-Buffer usando o algoritmo de Bresenham"""
     v1_cam = view_matrix @ np.array([p1_mundo[0], p1_mundo[1], p1_mundo[2], 1.0])
     v1_ndc = math_3d.divisao_perspectiva(proj_matrix @ v1_cam)
 
     v2_cam = view_matrix @ np.array([p2_mundo[0], p2_mundo[1], p2_mundo[2], 1.0])
     v2_ndc = math_3d.divisao_perspectiva(proj_matrix @ v2_cam)
 
-    if abs(v1_ndc[0]) > 2 or abs(v1_ndc[1]) > 2 or abs(v2_ndc[0]) > 2 or abs(v2_ndc[1]) > 2:
+    if abs(v1_ndc[0]) > 1.8 or abs(v1_ndc[1]) > 1.8 or abs(v2_ndc[0]) > 1.8 or abs(v2_ndc[1]) > 1.8:
         return
 
     x1 = int((v1_ndc[0] + 1.0) * 0.5 * res)
@@ -76,79 +87,94 @@ def desenhar_reta_3d_no_zbuffer(p1_mundo, p2_mundo, cor, imagem, z_buffer, view_
         if 0 <= px < res and 0 <= py < res:
             t = idx / num_pontos
             z_interpolado = (1 - t) * v1_ndc[2] + t * v2_ndc[2]
-
-            # CORREÇÃO AQUI: Mudado de z_interpolated para z_interpolado
-            if z_interpolado < z_buffer[py, px]:
+            if z_interpolado < z_buffer[py, px] + 0.005:
                 z_buffer[py, px] = z_interpolado
                 imagem[py, px] = np.array(cor, dtype=np.uint8)
 
 
+def desenhar_caixa_proporcao_mundo(imagem, z_buffer, view_matrix, proj_matrix, res):
+    """Gera o grid tridimensional completo limitando o universo de 10 unidades"""
+    cor_caixa = [205, 215, 228]
+    cor_grade = [234, 240, 246]
+
+    lim_min, lim_max = -10.0, 10.0
+    y_chao = -1.5
+    y_teto = 6.0
+
+    # 1. Linhas internas do chão divididas de 5 em 5 unidades (Questão 2.a)
+    for g in np.arange(lim_min, lim_max + 1.0, 5.0):
+        desenhar_reta_3d_no_zbuffer([g, y_chao, lim_min], [g, y_chao, lim_max], cor_grade, imagem, z_buffer,
+                                    view_matrix, proj_matrix, res)
+        desenhar_reta_3d_no_zbuffer([lim_min, y_chao, g], [lim_max, y_chao, g], cor_grade, imagem, z_buffer,
+                                    view_matrix, proj_matrix, res)
+
+    # 2. Estrutura de Gaiola Cúbica Comple (Proporção do Mundo)
+    arestas_caixa = [
+        ([lim_min, y_chao, lim_min], [lim_max, y_chao, lim_min]),
+        ([lim_min, y_chao, lim_max], [lim_max, y_chao, lim_max]),
+        ([lim_min, y_chao, lim_min], [lim_min, y_chao, lim_max]),
+        ([lim_max, y_chao, lim_min], [lim_max, y_chao, lim_max]),
+        ([lim_min, y_chao, lim_min], [lim_min, y_teto, lim_min]),
+        ([lim_max, y_chao, lim_min], [lim_max, y_teto, lim_min]),
+        ([lim_min, y_chao, lim_max], [lim_min, y_teto, lim_max]),
+        ([lim_max, y_chao, lim_max], [lim_max, y_teto, lim_max]),
+        ([lim_min, y_teto, lim_min], [lim_max, y_teto, lim_min]),
+        ([lim_min, y_teto, lim_max], [lim_max, y_teto, lim_max]),
+        ([lim_min, y_teto, lim_min], [lim_min, y_teto, lim_max]),
+        ([lim_max, y_teto, lim_min], [lim_max, y_teto, lim_max]),
+    ]
+    for p1, p2 in arestas_caixa:
+        desenhar_reta_3d_no_zbuffer(p1, p2, cor_caixa, imagem, z_buffer, view_matrix, proj_matrix, res)
+
+
 # ==============================================================================
-# PIPELINE DE RENDERIZAÇÃO PRINCIPAL COM SOMBREAMENTO DE PHONG POR PIXEL
+# PIPELINE PRINCIPAL DE RENDERIZAÇÃO ESTILO PLOTLY POINT-MESH MULTI-COR
 # ==============================================================================
-def renderizar_cena_completa(resolucao_tela, view_matrix, proj_matrix, posicao_camera, posicao_luz, cache_malhas,
-                             modo_blender=False):
-    """Pipeline Gráfico na Unha com Phong Shading por pixel."""
-    imagem = np.zeros((resolucao_tela, resolucao_tela, 3), dtype=np.uint8)
+def renderizar_cena_completa(resolucao_tela, view_matrix, proj_matrix, cache_malhas, modo_blender=False):
+    """Pipeline analítico na unha simulando a estética por malhas de linhas independentes do Plotly."""
+    imagem = np.full((resolucao_tela, resolucao_tela, 3), 245, dtype=np.uint8)
     z_buffer = np.full((resolucao_tela, resolucao_tela), np.inf)
 
+    # Desenha o sistema de proporção de eixos e caixa tridimensional no fundo
+    desenhar_caixa_proporcao_mundo(imagem, z_buffer, view_matrix, proj_matrix, resolucao_tela)
+
+    # Loop de processamento das peças
     for func_campo, px, pz, cor_objeto, label, escala in CENA:
         nome = func_campo.__name__
-        verts, faces, normals = cache_malhas[nome]
+        verts, faces, _ = cache_malhas[nome]
         matriz_mundo = construir_matriz_mundo(px, pz, escala=escala)
-        matriz_normais = np.linalg.inv(matriz_mundo[:3, :3]).T
 
-        vertices_mundo, vertices_tela, profundidades_z, normais_mundo = [], [], [], []
+        vertices_tela, profundidades_z = [], []
 
         for i in range(len(verts)):
             v_mundo = matriz_mundo @ np.array([verts[i][0], verts[i][1], verts[i][2], 1.0])
-            vertices_mundo.append(v_mundo[:3])
-            normais_mundo.append(math_3d.normalizar(matriz_normais @ normals[i]))
-
             v_ndc = math_3d.divisao_perspectiva(proj_matrix @ (view_matrix @ v_mundo))
             profundidades_z.append(v_ndc[2])
             vertices_tela.append(((v_ndc[0] + 1.0) * 0.5 * resolucao_tela, (1.0 - v_ndc[1]) * 0.5 * resolucao_tela))
 
+        cor_rgb_peca = (np.array(cor_objeto) * 255).astype(np.uint8)
+
         for face in faces:
-            v0_m, v1_m, v2_m = vertices_mundo[face[0]], vertices_mundo[face[1]], vertices_mundo[face[2]]
-            normal_face = np.cross(v1_m - v0_m, v2_m - v0_m)
-
-            # Back-face Culling analítico
-            if np.dot(normal_face, posicao_camera - v0_m) <= 0:
-                continue
-
             pA, pB, pC = vertices_tela[face[0]], vertices_tela[face[1]], vertices_tela[face[2]]
             zA, zB, zC = profundidades_z[face[0]], profundidades_z[face[1]], profundidades_z[face[2]]
-            nA, nB, nC = normais_mundo[face[0]], normais_mundo[face[1]], normais_mundo[face[2]]
 
-            pixels_internos = rasterizer.scan_line_par_impar([pA, pB, pC], resolucao_tela, resolucao_tela)
+            arestas = [(pA, pB, zA, zB), (pB, pC, zB, zC), (pC, pA, zC, zA)]
+            for p1, p2, z1, z2 in arestas:
+                pontos = rasterizer.rasterizar_bresenham(int(p1[0]), int(p1[1]), int(p2[0]), int(p2[1]))
+                num_p = len(pontos)
+                if num_p == 0: continue
 
-            for (x, y) in pixels_internos:
-                alpha, beta, gamma = rasterizer.coordenadas_baricentricas(x, y, pA[0], pA[1], pB[0], pB[1], pC[0],
-                                                                          pC[1])
-                if alpha >= 0 and beta >= 0 and gamma >= 0:
-                    z_pixel = alpha * zA + beta * zB + gamma * zC
-                    if z_pixel < z_buffer[y, x]:
-                        z_buffer[y, x] = z_pixel
+                for idx, (bx, by) in enumerate(pontos):
+                    if 0 <= bx < resolucao_tela and 0 <= by < resolucao_tela:
+                        t = idx / num_p
+                        z_lin = (1 - t) * z1 + t * z2
+                        if z_lin < z_buffer[by, bx]:
+                            z_buffer[by, bx] = z_lin
+                            imagem[by, bx] = cor_rgb_peca
 
-                        pos_pixel_mundo = alpha * v0_m + beta * v1_m + gamma * v2_m
-                        norm_pixel_mundo = alpha * nA + beta * nB + gamma * nC
-
-                        cor_final = illumination.calcular_iluminacao_phong(
-                            vertice_mundo=pos_pixel_mundo, normal=norm_pixel_mundo,
-                            posicao_luz=posicao_luz, posicao_camera=posicao_camera,
-                            cor_objeto=cor_objeto, coeficientes=(0.25, 0.65, 0.6), brilho=40
-                        )
-                        imagem[y, x] = (np.clip(cor_final, 0.0, 1.0) * 255).astype(np.uint8)
-
+    # Adiciona a pirâmide da câmera e marcador de origem caso esteja ativo
     if modo_blender:
-        # Desenha Eixo X (Vermelho) e Eixo Z (Verde)
-        desenhar_reta_3d_no_zbuffer([-15, -1.5, 0], [15, -1.5, 0], [255, 50, 50], imagem, z_buffer, view_matrix,
-                                    proj_matrix, resolucao_tela)
-        desenhar_reta_3d_no_zbuffer([0, -1.5, -15], [0, -1.5, 15], [50, 255, 50], imagem, z_buffer, view_matrix,
-                                    proj_matrix, resolucao_tela)
-
-        # Desenha Diamante Laranja na Origem (0,0,0)
+        # Desenha Diamante Laranja na Origem (0,0,0) - Item 3.d do PDF
         r_origem = 0.3
         arestas_losango = [
             ([r_origem, 0, 0], [0, r_origem, 0]), ([0, r_origem, 0], [-r_origem, 0, 0]),
@@ -159,75 +185,87 @@ def renderizar_cena_completa(resolucao_tela, view_matrix, proj_matrix, posicao_c
             ([0, -r_origem, 0], [0, 0, -r_origem]), ([0, 0, -r_origem], [0, r_origem, 0])
         ]
         for p1, p2 in arestas_losango:
-            desenhar_reta_3d_no_zbuffer(np.array(p1) + [0, -1.4, 0], np.array(p2) + [0, -1.4, 0], [255, 120, 50],
+            desenhar_reta_3d_no_zbuffer(np.array(p1) + [0, -1.4, 0], np.array(p2) + [0, -1.4, 0], [255, 110, 30],
                                         imagem, z_buffer, view_matrix, proj_matrix, resolucao_tela)
 
-        # Desenha o Objeto Câmera Fictício no ponto 'eye' real
+        # Desenha a Pirâmide Física da Câmera Laranja no ponto real
         posicao_camera_ficticia = np.array([12.0, 8.0, 15.0])
         linhas_cam = gerar_linhas_camera_blender(posicao_camera_ficticia, at=[0.0, 0.0, 0.0], tamanho=2.5)
         for p1, p2 in linhas_cam:
-            desenhar_reta_3d_no_zbuffer(p1, p2, [255, 160, 20], imagem, z_buffer, view_matrix, proj_matrix,
+            desenhar_reta_3d_no_zbuffer(p1, p2, [255, 140, 0], imagem, z_buffer, view_matrix, proj_matrix,
                                         resolucao_tela)
 
     return imagem
 
 
+# ==============================================================================
+# EXECUÇÃO PRINCIPAL DO DUPLO PIPELINE SIMULTÂNEO (Questão 6 e Obs1)
+# ==============================================================================
 def main():
-    print("=== PIPELINE MULTI-RESOLUÇÃO + VIEWPORT SIMULTÂNEAS ===")
+    print("=== PIPELINE INTEGRADO: MULTI-RESOLUÇÃO + VIEWPORT COMPLETA ===")
+    cache_malhas = {f.__name__: modeling.extrair_malha(f, resolucao=35) for f, _, _, _, _, _ in CENA}
 
-    posicao_luz = np.array([5.0, 15.0, 10.0])
-    cache_malhas = {f.__name__: modeling.extrair_malha(f, resolucao=55) for f, _, _, _, _, _ in CENA}
-
-    # Parâmetros da Câmera Real (Captura Interna)
+    # Matrizes da Câmera Real (O que gera o enquadramento interno)
     posicao_camera_real = np.array([12.0, 8.0, 15.0])
-    lv_real = np.array([0.0, 0.0, 0.0]) - posicao_camera_real
-    up_real = math_3d.normalizar(np.cross(np.cross(lv_real, [0.0, 1.0, 0.0]), lv_real))
-
-    view_real = math_3d.look_at(eye=posicao_camera_real, at=[0.0, 0.0, 0.0], up=up_real)
+    view_real = math_3d.look_at(eye=posicao_camera_real, at=[0.0, 0.0, 0.0], up=[0.0, 1.0, 0.0])
     proj_real = math_3d.projecao_perspectiva(fov_graus=55, aspecto=1.0, z_near=0.1, z_far=100)
 
     # --------------------------------------------------------------------------
-    # TELA 1: AS 3 RESOLUÇÕES REPETIDAS LADO A LADO (Item 6)
+    # TELA 1: AS 3 RESOLUÇÕES SIMULTÂNEAS (Cores Fortes + Ticks)
     # --------------------------------------------------------------------------
     RESOLUCOES = [200, 400, 800]
-    plt.figure("Tela 1: Comparativo de Resoluções (Visão da Câmera)", figsize=(18, 6))
+    plt.figure("Tela 1: Comparativo de Resoluções (Visão Interna)", figsize=(18, 6))
 
     for idx, res in enumerate(RESOLUCOES):
-        print(f"[Fase Raster] Renderizando Visão Interna em {res}x{res}...")
-        img_res = renderizar_cena_completa(
-            resolucao_tela=res, view_matrix=view_real, proj_matrix=proj_real,
-            posicao_camera=posicao_camera_real, posicao_luz=posicao_luz, cache_malhas=cache_malhas, modo_blender=False
-        )
+        print(f"[Fase Raster] Processando Visão Interna em {res}x{res}...")
+        img_res = renderizar_cena_completa(res, view_real, proj_real, cache_malhas, modo_blender=False)
+
         plt.subplot(1, 3, idx + 1)
         plt.imshow(img_res)
-        plt.title(f"Resolução: {res} x {res}")
+        plt.title(f"Resolução: {res} x {res}", fontsize=11, fontweight='bold', color='#2c3e50')
         plt.axis('off')
 
+        # Desenha os Ticks numéricos de proporção na Tela 1
+        for val in [-10, -5, 0, 5, 10]:
+            pos_x_2d = calcular_posicao_tela_rotulo([val, -1.5, 10.0], view_real, proj_real, res)
+            if pos_x_2d:
+                plt.text(pos_x_2d[0], pos_x_2d[1] + (res * 0.04), str(val), color='#7f8c8d',
+                         fontsize=max(6, int(res * 0.02)), ha='center', va='top', weight='bold')
+            pos_z_2d = calcular_posicao_tela_rotulo([-10.0, -1.5, val], view_real, proj_real, res)
+            if pos_z_2d:
+                plt.text(pos_z_2d[0] - (res * 0.04), pos_z_2d[1], str(val), color='#7f8c8d',
+                         fontsize=max(6, int(res * 0.02)), ha='right', va='center', weight='bold')
+
     plt.tight_layout()
-    plt.show(block=False)
+    plt.show(block=False)  # Exibe a Tela 1 sem bloquear o terminal
 
     # --------------------------------------------------------------------------
-    # TELA 2: A VIEWPORT GLOBAL DO BLENDER EM 3D (Visão Externa Completa)
+    # TELA 2: VIEWPORT GLOBAL 3D (Visão Externa Inclinada Estilo Blender)
     # --------------------------------------------------------------------------
     olho_desenvolvimento = np.array([22.0, 15.0, 25.0])
-    lv_desenv = np.array([0.0, 0.0, 0.0]) - olho_desenvolvimento
-    up_desenv = math_3d.normalizar(np.cross(np.cross(lv_desenv, [0.0, 1.0, 0.0]), lv_desenv))
-
-    view_desenv = math_3d.look_at(eye=olho_desenvolvimento, at=[0.0, 0.0, 0.0], up=up_desenv)
+    view_desenv = math_3d.look_at(eye=olho_desenvolvimento, at=[0.0, 0.0, 0.0], up=[0.0, 1.0, 0.0])
     proj_desenv = math_3d.projecao_perspectiva(fov_graus=45, aspecto=1.0, z_near=0.1, z_far=100)
 
-    print("\n[Fase Raster] Renderizando Viewport Externa (Estilo Blender) em 800x800...")
-    render_blender = renderizar_cena_completa(
-        resolucao_tela=800, view_matrix=view_desenv, proj_matrix=proj_desenv,
-        posicao_camera=olho_desenvolvimento, posicao_luz=posicao_luz, cache_malhas=cache_malhas, modo_blender=True
-    )
+    print("\n[Fase Raster] Renderizando Viewport Externa (Blender 3D) em 800x800...")
+    render_blender = renderizar_cena_completa(800, view_desenv, proj_desenv, cache_malhas, modo_blender=True)
 
     plt.figure("Tela 2: Viewport de Trabalho (Estilo Blender 3D)", figsize=(8, 8))
     plt.imshow(render_blender)
-    plt.title("Visualização Externa do Cenário Completo")
+    plt.title("Visualização Global (Diferenciação Mundo vs Câmera)", fontsize=12, fontweight='bold', color='#2c3e50')
     plt.axis('off')
 
-    print("Sucesso! Exibindo as duas janelas de forma simultânea...")
+    # Rótulos de Ticks da Viewport Externa para fechar a proporção de fora
+    for val in [-10, -5, 0, 5, 10]:
+        pos_x_2d = calcular_posicao_tela_rotulo([val, -1.5, 10.0], view_desenv, proj_desenv, 800)
+        if pos_x_2d:
+            plt.text(pos_x_2d[0], pos_x_2d[1] + 32, str(val), color='#7f8c8d', fontsize=12, ha='center', va='top',
+                     weight='bold')
+        pos_z_2d = calcular_posicao_tela_rotulo([-10.0, -1.5, val], view_desenv, proj_desenv, 800)
+        if pos_z_2d:
+            plt.text(pos_z_2d[0] - 32, pos_z_2d[1], str(val), color='#7f8c8d', fontsize=12, ha='right', va='center',
+                     weight='bold')
+
+    print("Sucesso! Ambas as janelas carregadas simultaneamente.")
     plt.tight_layout()
     plt.show()
 
