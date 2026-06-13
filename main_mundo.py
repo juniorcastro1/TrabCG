@@ -10,12 +10,12 @@ import math_3d
 # Uma peça de cada tipo, distribuídas em linha, cada uma com cor distinta
 # (função_de_campo, posição_x, posição_z, cor_hex, nome_label, escala)
 CENA = [
-    (modeling.gerar_campo_peao, -12.5, 0.0, "#E63946", "Peão", 1.0),
-    (modeling.gerar_campo_dama,    -7.5, 0.0, "#F4A261", "Dama",   1.0),
-    (modeling.gerar_campo_torre, -2.5, 0.0, "#2A9D8F", "Torre",  1.0),
-    (modeling.gerar_campo_bispo,    2.5, 0.0, "#A8DADC", "Bispo",  1.0),
-    (modeling.gerar_campo_rainha,   7.5, 0.0, "#C77DFF", "Rainha", 1.0),
-    (modeling.gerar_campo_rei,     12.5, 0.0, "#FFD166", "Rei",    1.0),
+    #(modeling.gerar_campo_peao, 0.0, 0.0, "#E63946", "Peão", 0.1),
+    #(modeling.gerar_campo_dama,    -7.5, 0.0, "#F4A261", "Dama",   1.0),
+    (modeling.gerar_campo_torre_elaborada, 0.0, 0.0, "#2A9D8F", "Torre",  1.0),
+    #(modeling.gerar_campo_bispo,    0.0, 0.0, "#A8DADC", "Bispo",  1.0),
+    #(modeling.gerar_campo_rainha,   7.5, 0.0, "#C77DFF", "Rainha", 1.0),
+    #(modeling.gerar_campo_rei,     12.5, 0.0, "#FFD166", "Rei",    1.0),
 ]
 
 

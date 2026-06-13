@@ -21,7 +21,7 @@ def main():
     # FASE 2: Modelagem e Matriz do Mundo
     # ---------------------------------------------------------
     print("A extrair a malha do Peão (Marching Cubes)...")
-    vert_peao, faces_peao, norm_peao = modeling.extrair_malha(modeling.gerar_campo_peao)
+    vert_peao, faces_peao, norm_peao = modeling.extrair_malha(modeling.gerar_campo_rei)
     
     m_escala = math_3d.escala(1.5, 1.5, 1.5)
     m_rotacao = math_3d.rotacao_y(0.0)
