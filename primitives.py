@@ -129,7 +129,7 @@ def esfera(x, y, z, cx, cy, cz, raio):
 def elipsoide(x, y, z, cx, cy, cz, a, b):
     """
     Elipsoide com simetria rotacional em torno do eixo Y.
-    a = raio horizontal (X e Z),  b = semi-altura (Y).
+    a = raio horizontal (X e Z), b = semialtura (Y).
 
     Generaliza a esfera dividindo cada eixo pelo seu próprio raio:
         (x-cx)²/a²  +  (y-cy)²/b²  +  (z-cz)²/a²  -  1  =  0
@@ -162,35 +162,16 @@ def toro(x, y, z, cx, cy, cz, r_maior, r_tubo):
     """
     Toro (forma de rosca/donut) centrado em (cx, cy, cz), deitado no plano XZ.
 
-    r_maior = distância do centro do toro ao centro do tubo circular
-    r_tubo  = raio da secção transversal do tubo
+    R_maior = distância do centro do toro ao centro do tubo circular
+    R_tubo = raio da secção transversal do tubo
 
     Derivação: a distância de um ponto ao círculo central do toro é:
-        d_anel = sqrt(x²+z²) - r_maior   (distância ao anel no plano XZ)
+        d_anel = sqrt(x²+z²) - r_maior (distância ao anel no plano XZ)
     A superfície do toro é onde a distância 3D ao anel = r_tubo:
-        sqrt(d_anel² + y²) - r_tubo  =  0
+        sqrt(d_anel² + y²) - r_tubo = 0
     Elevando ao quadrado para remover a raiz externa:
-        (sqrt(x²+z²) - r_maior)² + y² - r_tubo²  =  0
+        (sqrt(x²+z²) - r_maior)² + y² - r_tubo² = 0
     """
-    dx = cx - cx   # deslocamento — mantido para simetria com outras funções
-    danel = np.sqrt((x - cx)**2 + (z - cz)**2) - r_maior
-    return danel**2 + (y - cy)**2 - r_tubo**2
+    d_anel = np.sqrt((x - cx)**2 + (z - cz)**2) - r_maior
+    return d_anel**2 + (y - cy)**2 - r_tubo**2
 
-
-def capsula(x, y, z, cx, y_min, y_max, cz, raio):
-    """
-    Cápsula: cilindro com tampas esféricas nos extremos.
-    Equivale à união de um cilindro com duas esferas nas pontas,
-    mas pode ser expressa compactamente via distância ao segmento:
-
-        d_seg = distância do ponto (x,y,z) ao segmento vertical
-                entre (cx, y_min, cz) e (cx, y_max, cz)
-
-    Superfície: d_seg - raio = 0
-
-    A distância ao segmento clampeia y entre y_min e y_max antes
-    de calcular a distância euclidiana, o que cria as tampas esféricas
-    automaticamente nas extremidades.
-    """
-    y_clamped = np.clip(y, y_min, y_max)
-    return np.sqrt((x - cx)**2 + (y - y_clamped)**2 + (z - cz)**2) - raio

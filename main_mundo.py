@@ -7,15 +7,16 @@ import math_3d
 # DEFINIÇÃO DA CENA
 # Cada entrada: (função_de_campo, posição_x, posição_z, cor_hex, nome_label, escala)
 # ==============================================================================
-# Uma peça de cada tipo, distribuídas em linha, cada uma com cor distinta
-# (função_de_campo, posição_x, posição_z, cor_hex, nome_label, escala)
+# Cada entrada: (função, x, z, cor, label, escala, limites_grade)
+# limites_grade = None usa o padrão de extrair_malha.
+# Peças com detalhes finos (ex: dama) usam limites apertados para maior resolução efetiva.
 CENA = [
-    #(modeling.gerar_campo_peao, 0.0, 0.0, "#E63946", "Peão", 0.1),
-    #(modeling.gerar_campo_dama,    -7.5, 0.0, "#F4A261", "Dama",   1.0),
-    (modeling.gerar_campo_torre_elaborada, 0.0, 0.0, "#2A9D8F", "Torre",  1.0),
-    #(modeling.gerar_campo_bispo,    0.0, 0.0, "#A8DADC", "Bispo",  1.0),
-    #(modeling.gerar_campo_rainha,   7.5, 0.0, "#C77DFF", "Rainha", 1.0),
-    #(modeling.gerar_campo_rei,     12.5, 0.0, "#FFD166", "Rei",    1.0),
+    (modeling.gerar_campo_peao,    -12.5, 0.0, "#E63946", "Peão",   1.0, None),
+    (modeling.gerar_campo_dama,     -7.5, 0.0, "#F4A261", "Dama",   1.0, (-4, 4)),
+    (modeling.gerar_campo_torre,    -2.5, 0.0, "#2A9D8F", "Torre",  1.0, None),
+    (modeling.gerar_campo_bispo,     2.5, 0.0, "#A8DADC", "Bispo",  1.0, None),
+    (modeling.gerar_campo_rainha,    7.5, 0.0, "#C77DFF", "Rainha", 1.0, None),
+    (modeling.gerar_campo_rei,      12.5, 0.0, "#FFD166", "Rei",    1.0, None),
 ]
 
 
@@ -44,15 +45,17 @@ def main():
     cache_malhas = {}
     total = len(CENA)
 
-    for i, (func_campo, px, pz, cor_hex, label, escala) in enumerate(CENA):
+    for i, (func_campo, px, pz, cor_hex, label, escala, limites) in enumerate(CENA):
         nome = func_campo.__name__
         print(f"  [{i+1}/{total}] {label} em ({px:.0f}, {pz:.0f})")
 
-        if nome not in cache_malhas:
-            verts, faces, normals = modeling.extrair_malha(func_campo)
-            cache_malhas[nome] = (verts, faces, normals)
+        cache_key = nome + str(limites)
+        if cache_key not in cache_malhas:
+            kwargs = {"limites": limites} if limites is not None else {}
+            verts, faces, normals = modeling.extrair_malha(func_campo, **kwargs)
+            cache_malhas[cache_key] = (verts, faces, normals)
         else:
-            verts, faces, normals = cache_malhas[nome]
+            verts, faces, normals = cache_malhas[cache_key]
 
         matriz_mundo = construir_matriz_mundo(px, pz, escala=escala)
         verts_mundo  = aplicar_matriz_mundo(verts, matriz_mundo)
