@@ -141,7 +141,7 @@ def desenhar_caixa_proporcao_mundo(imagem, z_buffer, view_matrix, proj_matrix, r
     """Desenha o grid de chão e a gaiola cúbica delimitando o espaço da cena."""
     COR_CAIXA = [205, 215, 228]
     COR_GRADE = [234, 240, 246]
-    X_MIN, X_MAX = -15.0, 15.0
+    X_MIN, X_MAX = -10.0, 10.0
     Z_MIN, Z_MAX = -10.0, 10.0
     Y_CHAO, Y_TETO = -2.0, 7.0
 
@@ -266,7 +266,6 @@ def renderizar_cena_completa(resolucao_tela, view_matrix, proj_matrix, cache_mal
         r         = 0.4
         offset_y  = np.array([0, -1.9, 0])
         COR_LOSANGO  = [255, 110, 30]
-        COR_PIRAMIDE = [255, 140,  0]
 
         arestas_losango = [
             ([r, 0, 0], [0, r, 0]), ([0, r, 0], [-r, 0, 0]),
