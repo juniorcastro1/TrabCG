@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import modeling
+import illumination
 import math_3d
 import rasterizer
 
@@ -10,14 +11,13 @@ import rasterizer
 # ==============================================================================
 CENA = [
     # (função_de_campo, posição_x, posição_z, cor_hex, nome_label, escala, limites_grade)
-    (modeling.gerar_campo_peao, -12.5, 0.0, "#E63946", "Peão", 1.0, None),
-    (modeling.gerar_campo_dama, -7.5, 0.0, "#F4A261", "Dama", 1.0, (-4, 4)),
-    (modeling.gerar_campo_torre, -2.5, 0.0, "#2A9D8F", "Torre", 1.0, None),
-    (modeling.gerar_campo_bispo, 2.5, 0.0, "#A8DADC", "Bispo", 1.0, None),
-    (modeling.gerar_campo_rainha, 7.5, 0.0, "#C77DFF", "Rainha", 1.0, None),
-    (modeling.gerar_campo_rei, 12.5, 0.0, "#FFD166", "Rei", 1.0, None),
+    (modeling.gerar_campo_peao, -7.5, -4.5, "#E63946", "Peão", 1.0, None),
+    (modeling.gerar_campo_dama, -4.5, 1.5, "#F4A261", "Dama", 1.0, (-4, 4)),
+    (modeling.gerar_campo_torre, -1.5, -4.5, "#2A9D8F", "Torre", 1.0, None),
+    (modeling.gerar_campo_bispo, 1.5, 1.5, "#A8DADC", "Bispo", 1.0, None),
+    (modeling.gerar_campo_rainha, 4.5, -4.5, "#C77DFF", "Rainha", 1.0, None),
+    (modeling.gerar_campo_rei, 7.5, 1.5, "#FFD166", "Rei", 1.0, None),
 ]
-
 
 def hex_to_rgb(hex_str):
     """Converte strings hexadecimais (#RRGGBB) para tuplas RGB float [0.0, 1.0]"""
@@ -141,54 +141,82 @@ def desenhar_caixa_proporcao_mundo(imagem, z_buffer, view_matrix, proj_matrix, r
 
 
 # ==============================================================================
-# PIPELINE DE RENDERIZAÇÃO ESTILO MESH INDEPENDENTE COM CACHE INTEGRADO
+# PIPELINE DE RENDERIZAÇÃO SÓLIDA (COM PHONG E SCANLINE)
 # ==============================================================================
-def renderizar_cena_completa(resolucao_tela, view_matrix, proj_matrix, cache_malhas, modo_blender=False):
-    """Pipeline analítico na unha simulando a estética por malhas de linhas."""
+def renderizar_cena_completa(resolucao_tela, view_matrix, proj_matrix, cache_malhas, posicao_camera, posicao_luz,
+                             modo_blender=False):
+    """Pipeline aplicando Culling, Phong, Z-Buffer e Interpolação Baricêntrica."""
     imagem = np.full((resolucao_tela, resolucao_tela, 3), 245, dtype=np.uint8)
     z_buffer = np.full((resolucao_tela, resolucao_tela), np.inf)
 
-    # Renderiza a caixa tridimensional no fundo
     desenhar_caixa_proporcao_mundo(imagem, z_buffer, view_matrix, proj_matrix, resolucao_tela)
 
     for func_campo, px, pz, cor_hex, label, escala, limites in CENA:
         nome = func_campo.__name__
         cache_key = nome + str(limites)
-        verts, faces, _ = cache_malhas[cache_key]
-
+        verts, faces, normais = cache_malhas[cache_key]
         matriz_mundo = construir_matriz_mundo(px, pz, escala=escala)
-        vertices_tela, profundidades_z = [], []
 
-        # Transformação e Projeção Vetorial Analítica
+        vertices_tela, profundidades_z, vertices_mundo, normais_mundo = [], [], [], []
+        cor_base_float = hex_to_rgb(cor_hex)
+
+        # 1. Transformação de Vértices e Normais
         for i in range(len(verts)):
             v_mundo = matriz_mundo @ np.array([verts[i][0], verts[i][1], verts[i][2], 1.0])
+            vertices_mundo.append(v_mundo[:3])
+
+            # CORREÇÃO: Multiplicamos as normais por -1 para que apontem para FORA da peça
+            n_mundo = (matriz_mundo @ np.array([-normais[i][0], -normais[i][1], -normais[i][2], 0.0]))[:3]
+            normais_mundo.append(n_mundo)
+
             v_ndc = math_3d.divisao_perspectiva(proj_matrix @ (view_matrix @ v_mundo))
             profundidades_z.append(v_ndc[2])
             vertices_tela.append(((v_ndc[0] + 1.0) * 0.5 * resolucao_tela, (1.0 - v_ndc[1]) * 0.5 * resolucao_tela))
 
-        cor_rgb_peca = (np.array(hex_to_rgb(cor_hex)) * 255).astype(np.uint8)
-
-        # Desenho das Malhas Externas por Linhas de Conexão
+        # 2. Processamento das Faces (Rasterização Sólida)
         for face in faces:
+            v0_m, v1_m, v2_m = vertices_mundo[face[0]], vertices_mundo[face[1]], vertices_mundo[face[2]]
+
+            # BACK-FACE CULLING
+            normal_face = np.cross(v1_m - v0_m, v2_m - v0_m)
+            if np.dot(normal_face, posicao_camera - v0_m) <= 0:
+                continue
+
+            # ILUMINAÇÃO PHONG nos 3 vértices
+            cores_vertices = []
+            for v_idx in face:
+                cor = illumination.calcular_iluminacao_phong(
+                    vertice_mundo=vertices_mundo[v_idx], normal=normais_mundo[v_idx],
+                    posicao_luz=posicao_luz, posicao_camera=posicao_camera,
+                    cor_objeto=cor_base_float,
+                    # CORREÇÃO: Aumentamos a luz Ambiente (ka) para 0.5 e a Difusa (kd) para 0.8
+                    coeficientes=(0.5, 0.8, 0.4), brilho=32
+                )
+                cores_vertices.append(cor)
+
             pA, pB, pC = vertices_tela[face[0]], vertices_tela[face[1]], vertices_tela[face[2]]
             zA, zB, zC = profundidades_z[face[0]], profundidades_z[face[1]], profundidades_z[face[2]]
 
-            arestas = [(pA, pB, zA, zB), (pB, pC, zB, zC), (pC, pA, zC, zA)]
-            for p1, p2, z1, z2 in arestas:
-                pontos = rasterizer.rasterizar_bresenham(int(p1[0]), int(p1[1]), int(p2[0]), int(p2[1]))
-                num_p = len(pontos)
-                if num_p == 0: continue
+            triangulo_2d = [pA, pB, pC]
 
-                for idx, (bx, by) in enumerate(pontos):
-                    if 0 <= bx < resolucao_tela and 0 <= by < resolucao_tela:
-                        t = idx / num_p
-                        z_lin = (1 - t) * z1 + t * z2
-                        if z_lin < z_buffer[by, bx]:
-                            z_buffer[by, bx] = z_lin
-                            imagem[by, bx] = cor_rgb_peca
+            # SCAN LINE
+            pixels_internos = rasterizer.scan_line_par_impar(triangulo_2d, largura_tela=resolucao_tela,
+                                                             altura_tela=resolucao_tela)
+
+            for (x, y) in pixels_internos:
+                # INTERPOLAÇÃO BARICÊNTRICA
+                alpha, beta, gamma = rasterizer.coordenadas_baricentricas(x, y, pA[0], pA[1], pB[0], pB[1], pC[0],
+                                                                          pC[1])
+
+                if alpha >= 0 and beta >= 0 and gamma >= 0:
+                    z_pixel = alpha * zA + beta * zB + gamma * zC
+
+                    if z_pixel < z_buffer[y, x]:
+                        z_buffer[y, x] = z_pixel
+                        cor_pixel = alpha * cores_vertices[0] + beta * cores_vertices[1] + gamma * cores_vertices[2]
+                        imagem[y, x] = (np.clip(cor_pixel, 0.0, 1.0) * 255).astype(np.uint8)
 
     if modo_blender:
-        # Desenha Diamante Laranja na Origem (0,0,0) - Item 3.d do PDF
         r_origem = 0.4
         arestas_losango = [
             ([r_origem, 0, 0], [0, r_origem, 0]), ([0, r_origem, 0], [-r_origem, 0, 0]),
@@ -202,7 +230,6 @@ def renderizar_cena_completa(resolucao_tela, view_matrix, proj_matrix, cache_mal
             desenhar_reta_3d_no_zbuffer(np.array(p1) + [0, -1.9, 0], np.array(p2) + [0, -1.9, 0], [255, 110, 30],
                                         imagem, z_buffer, view_matrix, proj_matrix, resolucao_tela)
 
-        # Desenha a Pirâmide Física da Câmera Laranja no ponto real [0.0, 1.6, 2.2] escalado
         posicao_camera_ficticia = np.array([0.0, 8.0, 25.0])
         linhas_cam = gerar_linhas_camera_blender(posicao_camera_ficticia, at=[0.0, 0.0, 0.0], tamanho=4.0)
         for p1, p2 in linhas_cam:
@@ -213,12 +240,11 @@ def renderizar_cena_completa(resolucao_tela, view_matrix, proj_matrix, cache_mal
 
 
 # ==============================================================================
-# EXECUÇÃO PRINCIPAL DO DUPLO PIPELINE SIMULTÂNEO ADAPTADO
+# EXECUÇÃO PRINCIPAL
 # ==============================================================================
 def main():
     print("=== PIPELINE ADAPTADO: NOVAS MALHAS PRIMITIVAS + DUPLO VIEWPORT ===")
 
-    # 1. GERAÇÃO DO CACHE DE MALHAS ADAPTADO AOS LIMITES OTIMIZADOS DO TRIO
     cache_malhas = {}
     total = len(CENA)
     for i, (func_campo, px, pz, cor_hex, label, escala, limites) in enumerate(CENA):
@@ -226,32 +252,31 @@ def main():
         cache_key = nome + str(limites)
         print(f"  Extraindo Malha [{i + 1}/{total}] -> {label}")
         if cache_key not in cache_malhas:
-            # Sincronizado com os parâmetros aceitos no seu novo modeling.py
-            kwargs = {"limites": limites, "resolucao": 40} if limites is not None else {"resolucao": 40}
+            kwargs = {"limites": limites, "resolucao": 35} if limites is not None else {"resolucao": 35}
             verts, faces, normals = modeling.extrair_malha(func_campo, **kwargs)
             cache_malhas[cache_key] = (verts, faces, normals)
 
-    # Matrizes da Câmera Real (Configuradas para enquadrar a nova linha horizontal de peças)
-    posicao_camera_real = np.array([0.0, 8.0, 25.0])
+    posicao_camera_real = np.array([7.5, 10.0, 5.0])  #[0.0, 8.0, 25.0]
+    posicao_luz_global = np.array([5.0, 20.0, 15.0])  # Luz adicionada aqui
+
     view_real = math_3d.look_at(eye=posicao_camera_real, at=[0.0, 0.0, 0.0], up=[0.0, 1.0, 0.0])
     proj_real = math_3d.projecao_perspectiva(fov_graus=58, aspecto=1.0, z_near=0.1, z_far=100)
 
-    # --------------------------------------------------------------------------
-    # TELA 1: AS 3 RESOLUÇÕES SIMULTÂNEAS (Cores Fortes Hex + Ticks)
-    # --------------------------------------------------------------------------
     RESOLUCOES = [200, 400, 800]
+    import matplotlib.pyplot as plt
     plt.figure("Tela 1: Comparativo de Resoluções (Novas Peças Primitivas)", figsize=(18, 6))
 
     for idx, res in enumerate(RESOLUCOES):
         print(f"[Fase Raster] Processando Visão Interna em {res}x{res}...")
-        img_res = renderizar_cena_completa(res, view_real, proj_real, cache_malhas, modo_blender=False)
+        # Note a adição de posicao_camera e posicao_luz_global nos argumentos abaixo
+        img_res = renderizar_cena_completa(res, view_real, proj_real, cache_malhas, posicao_camera_real,
+                                           posicao_luz_global, modo_blender=False)
 
         plt.subplot(1, 3, idx + 1)
         plt.imshow(img_res)
         plt.title(f"Resolução: {res} x {res}", fontsize=11, fontweight='bold', color='#2c3e50')
         plt.axis('off')
 
-        # Desenha os Ticks numéricos de proporção adaptados ao novo tamanho de caixa (-15 a 15)
         for val in [-15, -10, -5, 0, 5, 10, 15]:
             pos_x_2d = calcular_posicao_tela_rotulo([val, -2.0, 10.0], view_real, proj_real, res)
             if pos_x_2d:
@@ -266,22 +291,19 @@ def main():
     plt.tight_layout()
     plt.show(block=False)
 
-    # --------------------------------------------------------------------------
-    # TELA 2: VIEWPORT GLOBAL 3D (Visão Externa Inclinada dos solidos)
-    # --------------------------------------------------------------------------
     olho_desenvolvimento = np.array([26.0, 18.0, 28.0])
     view_desenv = math_3d.look_at(eye=olho_desenvolvimento, at=[0.0, 0.0, 0.0], up=[0.0, 1.0, 0.0])
     proj_desenv = math_3d.projecao_perspectiva(fov_graus=50, aspecto=1.0, z_near=0.1, z_far=100)
 
     print("\n[Fase Raster] Renderizando Viewport Externa (Estilo Blender) em 800x800...")
-    render_blender = renderizar_cena_completa(800, view_desenv, proj_desenv, cache_malhas, modo_blender=True)
+    render_blender = renderizar_cena_completa(800, view_desenv, proj_desenv, cache_malhas, olho_desenvolvimento,
+                                              posicao_luz_global, modo_blender=True)
 
     plt.figure("Tela 2: Viewport de Trabalho (Estilo Blender 3D)", figsize=(8, 8))
     plt.imshow(render_blender)
     plt.title("Visualização Global (Diferenciação Mundo vs Câmera)", fontsize=12, fontweight='bold', color='#2c3e50')
     plt.axis('off')
 
-    # Ticks da Viewport Externa
     for val in [-15, -10, -5, 0, 5, 10, 15]:
         pos_x_2d = calcular_posicao_tela_rotulo([val, -2.0, 10.0], view_desenv, proj_desenv, 800)
         if pos_x_2d:
